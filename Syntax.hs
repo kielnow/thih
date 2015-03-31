@@ -7,6 +7,8 @@
 -----------------------------------------------------------------------------
 module Syntax where
 
+import Data.List (union,nub,intersect)
+
 -- | Identifiers
 type Id = String
 
@@ -45,7 +47,7 @@ tString  = list tChar
 -----------------------------------------------------------------------------
 infixr 4 ~>
 (~>) :: Type -> Type -> Type
-(~>) a b = TApp (TApp tArrow a) b
+a ~> b = TApp (TApp tArrow a) b
 
 list :: Type -> Type
 list t = TApp tList t
@@ -60,8 +62,49 @@ instance HasKind Tyvar where
 instance HasKind Tycon where
   kind (Tycon _ k) = k
 instance HasKind Type where
-  kind (TVar tv) = kind tv
-  kind (TCon tc) = kind tc
+  kind (TVar u) = kind u
+  kind (TCon c) = kind c
   kind (TApp t _) | KFun _ k <- kind t = k
-  kind _ = undefined
+  kind _ = error "kind"
+
+-----------------------------------------------------------------------------
+-- Substitutions
+-----------------------------------------------------------------------------
+-- | Substitutions
+type Subst = [(Tyvar, Type)]
+
+nullSubst :: Subst
+nullSubst = []
+
+infix 4 +->
+(+->) :: Tyvar -> Type -> Subst
+u +-> t = [(u,t)]
+
+class Types t where
+  apply :: Subst -> t -> t
+  tv :: t -> [Tyvar]
+
+instance Types Type where
+  apply s (TVar u) = case lookup u s of
+    Just t -> t
+    Nothing -> TVar u
+  apply s (TApp l r) = TApp (apply s l) (apply s r)
+  apply _ t = t
   
+  tv (TVar u) = [u]
+  tv (TApp l r) = tv l `union` tv r
+  tv _ = []
+
+instance Types a => Types [a] where
+  apply s = map (apply s)
+  tv = nub . concat . map tv
+
+-- apply (s1 @@ s2) == apply s1 . apply s2
+infixr 4 @@
+(@@) :: Subst -> Subst -> Subst
+s1 @@ s2 = [(u, apply s1 t) | (u,t) <- s2] ++ s1
+
+merge :: Monad m => Subst -> Subst -> m Subst
+merge s1 s2 = if agree then return (s1++s2) else fail "merge fails"
+  where agree = all (\v -> apply s1 (TVar v) == apply s2 (TVar v)) (map fst s1 `intersect` map fst s2)
+
