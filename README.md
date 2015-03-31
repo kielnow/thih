@@ -1,2 +1,2 @@
-# thih
-Typing Haskell in Haskell
+# Typing Haskell in Haskell
+My practice.
