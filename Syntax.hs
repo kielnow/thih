@@ -108,3 +108,34 @@ merge :: Monad m => Subst -> Subst -> m Subst
 merge s1 s2 = if agree then return (s1++s2) else fail "merge fails"
   where agree = all (\v -> apply s1 (TVar v) == apply s2 (TVar v)) (map fst s1 `intersect` map fst s2)
 
+-----------------------------------------------------------------------------
+-- Unification and Matching
+-----------------------------------------------------------------------------
+-- | Most general unifier
+mgu :: Monad m => Type -> Type -> m Subst
+mgu (TApp l r) (TApp l' r') = do
+  s1 <- mgu l l'
+  s2 <- mgu (apply s1 r) (apply s1 r')
+  return (s2@@s1)
+mgu (TVar u) t = varBind u t
+mgu t (TVar u) = varBind u t
+mgu (TCon tc1) (TCon tc2) | tc1 == tc2 = return nullSubst
+mgu t1 t2 = fail "types do not unify"
+
+varBind :: Monad m => Tyvar -> Type -> m Subst
+varBind u t | t == TVar u      = return nullSubst
+            | u `elem` tv t    = fail "occurs check fails" -- occurs check
+            | kind u /= kind t = fail "kinds do not match" -- kind-preserving
+            | otherwise        = return (u +-> t)
+
+-- | Matching
+-- "match t1 t2 = s" such that "apply s t1 = t2"
+match :: Monad m => Type -> Type -> m Subst
+match (TApp l r) (TApp l' r') = do
+  sl <- match l l'
+  sr <- match r r'
+  merge sl sr
+match (TVar u) t | kind u == kind t = return (u +-> t)
+match (TCon tc1) (TCon tc2) | tc1 == tc2 = return nullSubst
+match t1 t2 = fail "types do not match"
+
